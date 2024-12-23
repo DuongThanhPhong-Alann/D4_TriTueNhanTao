@@ -23,15 +23,14 @@ class DuDoanGiaXeOtoCu:
 
     def tai_du_lieu(self):
         try:
-            self.du_lieu = pd.read_csv(self.duong_dan_du_lieu)
+            self.du_lieu = pd.read_csv(self.duong_dan_du_lieu, encoding='latin-1')
 
             # Làm sạch dữ liệu
-            self.du_lieu['milage'] = pd.to_numeric(
-                self.du_lieu['milage'].str.replace(r'[^\d.]', '', regex=True), errors='coerce'
-            )
-            self.du_lieu['price'] = pd.to_numeric(
-                self.du_lieu['price'].str.replace(r'[^\d.]', '', regex=True), errors='coerce'
-            )
+            self.du_lieu['milage'] = self.du_lieu['milage'].str.replace(r'[^\d.]', '', regex=True)
+            self.du_lieu['price'] = self.du_lieu['price'].str.replace(r'[^\d.]', '', regex=True)
+
+            self.du_lieu['milage'] = pd.to_numeric(self.du_lieu['milage'], errors='coerce')
+            self.du_lieu['price'] = pd.to_numeric(self.du_lieu['price'], errors='coerce')
 
             self.du_lieu['accident'] = self.du_lieu['accident'].fillna('None reported')
             self.du_lieu['clean_title'] = self.du_lieu['clean_title'].fillna('Unknown')
@@ -91,17 +90,67 @@ class DuDoanGiaXeOtoCu:
             mo_hinh.fit(X_train, y_train)
             y_du_doan = mo_hinh.predict(X_test)
 
+            mse = mean_squared_error(y_test, y_du_doan)
+            rmse = np.sqrt(mse)
+            r2 = r2_score(y_test, y_du_doan)
+            mae = mean_absolute_error(y_test, y_du_doan)
+            mape = mean_absolute_percentage_error(y_test, y_du_doan)
+
             ket_qua_mo_hinh[ten] = {
-                'MSE': mean_squared_error(y_test, y_du_doan),
-                'RMSE': np.sqrt(mean_squared_error(y_test, y_du_doan)),
-                'R2': r2_score(y_test, y_du_doan),
-                'MAE': mean_absolute_error(y_test, y_du_doan),
-                'MAPE': mean_absolute_percentage_error(y_test, y_du_doan)
+                'MSE': mse,
+                'RMSE': rmse,
+                'R2': r2,
+                'MAE': mae,
+                'MAPE': mape
             }
 
-        self.mo_hinh_tot_nhat = max(
-            cac_mo_hinh.items(), key=lambda x: ket_qua_mo_hinh[x[0]]['R2']
-        )[1]
+        # Tính tổng điểm dựa trên các chỉ số
+        
+        tong_diem_mo_hinh = {}
+        for ten, ket_qua in ket_qua_mo_hinh.items():
+            tong_diem = (
+                ket_qua['R2'] * 0.4 +
+                (1 - ket_qua['MAPE']) * 0.3 +
+                (1 - ket_qua['RMSE'] / y_test.std()) * 0.3
+            )
+            tong_diem_mo_hinh[ten] = tong_diem
+
+        self.mo_hinh_tot_nhat = max(cac_mo_hinh.values(), key=lambda x: tong_diem_mo_hinh[list(cac_mo_hinh.keys())[list(cac_mo_hinh.values()).index(x)]])
+
+        # Lưu kết quả so sánh các mô hình vào file Excel
+        with pd.ExcelWriter('so_sanh_mo_hinh.xlsx', engine='xlsxwriter') as writer:
+            for ten, ket_qua in ket_qua_mo_hinh.items():
+                # Tạo bảng kết quả cho từng mô hình
+                so_sanh_df = pd.DataFrame(ket_qua, index=[0])
+                so_sanh_df['Tổng Điểm'] = tong_diem_mo_hinh[ten]
+
+                # Thêm mô tả công thức vào bảng
+                mo_ta_chi_so = {
+                    'MSE': f"MSE = 1/n Σ(actual - predicted)² = {ket_qua['MSE']:.4f}",
+                    'RMSE': f"RMSE = √MSE = √({ket_qua['MSE']:.4f}) = {ket_qua['RMSE']:.4f}",
+                    'R2': f"R² = 1 - (Σ(actual - predicted)² / Σ(actual - mean)²) = {ket_qua['R2']:.4f}",
+                    'MAE': f"MAE = 1/n Σ|actual - predicted| = {ket_qua['MAE']:.4f}",
+                    'MAPE': f"MAPE = 1/n Σ| (actual - predicted) / actual | × 100 = {ket_qua['MAPE'] * 100:.4f}%"
+                }
+                mo_ta_df = pd.DataFrame.from_dict(mo_ta_chi_so, orient='index', columns=['Mô tả'])
+
+                # Ghi vào file Excel
+                so_sanh_df.to_excel(writer, sheet_name=ten)
+                mo_ta_df.to_excel(writer, sheet_name=ten, startrow=4)
+
+        # Tạo bảng tổng điểm
+        tong_diem_df = pd.DataFrame.from_dict(tong_diem_mo_hinh, orient='index', columns=['Tổng Điểm'])
+        tong_diem_df = tong_diem_df.sort_values(by='Tổng Điểm', ascending=False)
+        tong_diem_df.to_excel(writer, sheet_name='Tổng Điểm Mô Hình')
+
+        # Thêm công thức tính tổng điểm
+        workbook = writer.book
+        worksheet = writer.sheets['Tổng Điểm Mô Hình']
+        worksheet.write(0, 0, 'Tên Mô Hình')
+        worksheet.write(0, 1, 'Tổng Điểm')
+        worksheet.write(1, 1, '=SUM(B2*0.4, B3*0.3, B4*0.3)', workbook.add_format({'num_format': '0.00'}))
+
+        print("Đã lưu các bảng so sánh và tổng điểm vào file 'so_sanh_mo_hinh.xlsx'.")
 
         return ket_qua_mo_hinh, X_test, y_test
 
@@ -116,7 +165,7 @@ class DuDoanGiaXeOtoCu:
         # Tạo DataFrame kết quả cho toàn bộ dữ liệu
         thong_tin_xe = self.du_lieu[['brand', 'model', 'model_year', 'milage', 'fuel_type', 'engine', 
                                       'transmission', 'ext_col', 'int_col', 'accident', 'clean_title', 'price']]
-        
+
         # Tạo DataFrame kết quả
         ket_qua_df = thong_tin_xe.copy()
         ket_qua_df['Giá dự đoán'] = y_pred
@@ -127,8 +176,6 @@ class DuDoanGiaXeOtoCu:
         ket_qua_df['price'] = ket_qua_df['price'].apply(lambda x: f"${x:,.2f}")
         ket_qua_df['Giá dự đoán'] = ket_qua_df['Giá dự đoán'].apply(lambda x: f"${x:,.2f}")
         ket_qua_df['Giá chênh lệch'] = ket_qua_df['Giá chênh lệch'].apply(lambda x: f"${x:,.2f}")
-
-        1
 
         # Lưu kết quả vào file CSV
         ket_qua_df.to_csv(file_name, index=False, encoding='utf-8-sig')  # Đảm bảo mã hóa UTF-8
@@ -165,7 +212,7 @@ if __name__ == "__main__":
     if he_thong.du_lieu is not None:
         ket_qua, X_test, y_test = he_thong.huan_luyen_mo_hinh()
 
-        print("\nHiệu suất các mô hình:")
+        print("\nHiệu suất các mô hình: ")
         for ten, chi_so in ket_qua.items():
             print(f"\n{ten}:")
             for ten_chi_so, gia_tri in chi_so.items():
