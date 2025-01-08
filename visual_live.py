@@ -439,28 +439,6 @@ COMPARE_HTML = """
         </tbody>
     </table>
 
-    <h2 class="total-score-header">🏆 Bảng Tổng Điểm Mô Hình 🏆</h2>
-<table class="total-score-table">
-    <thead>
-        <tr>
-            <th>Tên Mô Hình</th>
-            <th>R2 Điểm (40%)</th>
-            <th>MAPE Điểm (30%)</th>
-            <th>RMSE Điểm (30%)</th>
-            <th>Tổng Điểm</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for model, metrics in models.items() %}
-        <tr>
-            <td>{{ model }}</td>
-            <td>{{ metrics['R2_Score'] }}</td>
-            <td>{{ metrics['MAPE_Score'] }}</td>
-            <td>{{ metrics['RMSE_Score'] }}</td>
-            <td>{{ metrics['Total_Score'] }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
 </table>
 
     <h2>Giới thiệu về các chỉ số hiệu suất</h2>
